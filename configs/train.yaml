@@ -1,11 +1,11 @@
 seed: 42
 model_dir: ../../models/cfm_vc_me
-resume_checkpoint: true
+resume_checkpoint: false
 
 train:
   fp16: true
-  batch_size: 16
-  num_epochs: 25000
+  batch_size: 32
+  num_epochs: 10000
   save_interval: 1000
   train_ratio: 0.9
 
