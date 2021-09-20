@@ -10,7 +10,7 @@ class ConformerVC(nn.Module):
     def __init__(self, params):
         super(ConformerVC, self).__init__()
 
-        self.in_conv = nn.Conv1d(80, params.encoder.channels, 1)
+        self.in_conv = nn.Conv1d(params.n_mel, params.encoder.channels, 1)
         self.relive_pos_emb = RelPositionalEncoding(
             params.encoder.channels,
             params.encoder.dropout
@@ -22,10 +22,10 @@ class ConformerVC(nn.Module):
         )
         self.decoder = Conformer(**params.decoder)
 
-        self.out_conv = nn.Conv1d(params.decoder.channels, 80, 1)
+        self.out_conv = nn.Conv1d(params.decoder.channels, params.n_mel, 1)
 
         self.post_net = nn.Sequential(
-            nn.Conv1d(80, params.decoder.channels, 5, padding=2),
+            nn.Conv1d(params.n_mel, params.decoder.channels, 5, padding=2),
             nn.BatchNorm1d(params.decoder.channels),
             nn.Tanh(),
             nn.Dropout(0.5),
@@ -41,7 +41,7 @@ class ConformerVC(nn.Module):
             nn.BatchNorm1d(params.decoder.channels),
             nn.Tanh(),
             nn.Dropout(0.5),
-            nn.Conv1d(params.decoder.channels, 80, 5, padding=2)
+            nn.Conv1d(params.decoder.channels, params.n_mel, 5, padding=2)
         )
 
     def forward(

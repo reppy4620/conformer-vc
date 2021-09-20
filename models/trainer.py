@@ -12,7 +12,10 @@ from torch.utils.data import DataLoader
 
 from data import VCDataset, collate_fn
 from .model import ConformerVC
+from .discriminator import Discriminator
 from .lr_scheduler import NoamLR
+from .utils import rand_slice
+from .loss import d_loss, g_loss
 from utils import seed_everything, Tracker
 
 
@@ -56,89 +59,154 @@ class Trainer:
             collate_fn=collate_fn
         )
 
-        model = ConformerVC(config.model)
-        optimizer = optim.AdamW(model.parameters(), eps=1e-9, **config.optimizer)
+        model_g = ConformerVC(config.model)
+        model_d = Discriminator(in_channels=config.model.n_mel, **config.model.discriminator)
+        optimizer_g = optim.AdamW(model_g.parameters(), eps=1e-9, **config.optimizer)
+        optimizer_d = optim.AdamW(model_d.parameters(), eps=1e-9, **config.optimizer)
 
-        epochs = self.load(config, model, optimizer)
+        epochs = self.load(config, model_g, model_d, optimizer_g, optimizer_g)
 
-        model, optimizer, train_loader, valid_loader = accelerator.prepare(
-            model, optimizer, train_loader, valid_loader
+        model_g, model_d, optimizer_g, optimizer_d, train_loader, valid_loader = accelerator.prepare(
+            model_g, model_d, optimizer_g, optimizer_d, train_loader, valid_loader
         )
-        scheduler = NoamLR(optimizer, d_model=config.model.encoder.channels, last_epoch=epochs * len(train_loader) - 1)
+        scheduler_g = NoamLR(optimizer_g, channels=config.model.encoder.channels, last_epoch=epochs * len(train_loader) - 1)
+        scheduler_d = NoamLR(optimizer_d, channels=config.model.discriminator.channels, last_epoch=epochs * len(train_loader) - 1)
 
         for epoch in range(epochs, config.train.num_epochs):
-            self.train_step(epoch, model, optimizer, scheduler, train_loader, writer, accelerator)
+            with torch.autograd.set_detect_anomaly(True):
+                self.train_step(
+                    config,
+                    epoch,
+                    [model_g, model_d],
+                    [optimizer_g, optimizer_d],
+                    [scheduler_g, scheduler_d],
+                    train_loader,
+                    writer,
+                    accelerator
+                )
             accelerator.wait_for_everyone()
             if accelerator.is_main_process:
-                self.valid_step(epoch, model, valid_loader, writer)
+                self.valid_step(epoch, model_g, valid_loader, writer)
                 if (epoch + 1) % config.train.save_interval == 0:
                     self.save(
                         output_dir / 'latest.ckpt',
                         epoch,
                         (epoch+1)*len(train_loader),
-                        accelerator.unwrap_model(model),
-                        optimizer
+                        accelerator.unwrap_model(model_g),
+                        accelerator.unwrap_model(model_d),
+                        optimizer_g,
+                        optimizer_d
                     )
         if accelerator.is_main_process:
             writer.close()
 
-    def train_step(self, epoch, model, optimizer, scheduler, loader, writer, accelerator):
-        model.train()
+    def train_step(self, config, epoch, models, optimizers, schedulers, loader, writer, accelerator):
+        model_g, model_d = models
+        optimizer_g, optimizer_d = optimizers
+        scheduler_g, scheduler_d = schedulers
+        model_g.train()
+        model_d.train()
+
         tracker = Tracker()
         bar = tqdm(desc=f'Epoch: {epoch + 1}', total=len(loader), disable=not accelerator.is_main_process)
         for i, batch in enumerate(loader):
-            loss = self._handle_batch(batch, model, tracker)
-            optimizer.zero_grad()
-            accelerator.backward(loss)
-            accelerator.clip_grad_norm_(model.parameters(), 5)
-            optimizer.step()
-            scheduler.step()
+            (
+                src_mel,
+                tgt_mel,
+                src_length,
+                tgt_length,
+                tgt_duration,
+                src_pitch,
+                tgt_pitch,
+                src_energy,
+                tgt_energy,
+                path
+            ) = batch
+
+            x, x_post, (dur_pred, pitch_pred, energy_pred) = model_g(
+                src_mel, src_length, tgt_length, src_pitch, tgt_pitch, src_energy, tgt_energy, path
+            )
+
+            # D
+            b, e = rand_slice(tgt_length, segment_length=config.model.segment_length)
+            pred_fake = model_d(x_post[:, :, b:e].detach())
+            pred_real = model_d(tgt_mel[:, :, b:e])
+            loss_d = d_loss(pred_real, pred_fake)
+            optimizer_d.zero_grad()
+            accelerator.backward(loss_d)
+            accelerator.clip_grad_norm_(model_d.parameters(), 5)
+            optimizer_d.step()
+            scheduler_d.step()
+
+            # G
+            pred_fake = model_d(x_post[:, :, b:e])
+            loss_gan = g_loss(pred_fake)
+            loss_recon = F.l1_loss(x, tgt_mel)
+            loss_post_recon = F.l1_loss(x_post, tgt_mel)
+            loss_duration = F.mse_loss(dur_pred, tgt_duration.to(x.dtype))
+            loss_pitch = F.mse_loss(pitch_pred, tgt_pitch.to(x.dtype))
+            loss_energy = F.mse_loss(energy_pred, tgt_energy.to(x.dtype))
+            loss_g = loss_gan + loss_recon + loss_post_recon + loss_duration + loss_pitch + loss_energy
+            optimizer_g.zero_grad()
+            accelerator.backward(loss_g)
+            accelerator.clip_grad_norm_(model_g.parameters(), 5)
+            optimizer_g.step()
+            scheduler_g.step()
+
+            tracker.update(
+                loss_d=loss_d.item(),
+                loss_g=loss_g.item(),
+                recon=loss_recon.item(),
+                post_recon=loss_post_recon.item(),
+                duration=loss_duration.item(),
+                pitch=loss_pitch.item(),
+                energy=loss_energy.item()
+            )
+
             bar.update()
-            bar.set_postfix_str(f'Loss: {loss:.6f}')
-        bar.set_postfix_str(f'Mean Loss: {tracker.loss.mean():.6f}')
+            bar.set_postfix_str(f'Loss_g: {loss_g:.6f}, Loss_d: {loss_d: .6f}')
+        bar.set_postfix_str(f'Mean Loss_g: {tracker.loss_g.mean():.6f}, Mean Loss_d: {tracker.loss_d.mean():.6f}')
         if accelerator.is_main_process:
             self.write_losses(epoch, writer, tracker, mode='train')
         bar.close()
 
-    def valid_step(self, epoch, model, loader, writer):
-        model.eval()
+    def valid_step(self, epoch, model_g, loader, writer):
+        model_g.eval()
         tracker = Tracker()
         with torch.no_grad():
-            for i, batch in enumerate(loader):
-                _ = self._handle_batch(batch, model, tracker)
-        self.write_losses(epoch, writer, tracker, mode='valid')
+            for batch in loader:
+                (
+                    src_mel,
+                    tgt_mel,
+                    src_length,
+                    tgt_length,
+                    tgt_duration,
+                    src_pitch,
+                    tgt_pitch,
+                    src_energy,
+                    tgt_energy,
+                    path
+                ) = batch
 
-    def _handle_batch(self, batch, model, tracker):
-        (
-            src_mel,
-            tgt_mel,
-            src_length,
-            tgt_length,
-            tgt_duration,
-            src_pitch,
-            tgt_pitch,
-            src_energy,
-            tgt_energy,
-            path
-        ) = batch
-        x, x_post, (dur_pred, pitch_pred, energy_pred) = model(
-            src_mel, src_length, tgt_length, src_pitch, tgt_pitch, src_energy, tgt_energy, path
-        )
-        loss_recon = F.l1_loss(x, tgt_mel)
-        loss_post_recon = F.l1_loss(x_post, tgt_mel)
-        loss_duration = F.mse_loss(dur_pred, tgt_duration.to(x.dtype))
-        loss_pitch = F.mse_loss(pitch_pred, tgt_pitch.to(x.dtype))
-        loss_energy = F.mse_loss(energy_pred, tgt_energy.to(x.dtype))
-        loss = loss_recon + loss_post_recon + loss_duration + loss_pitch + loss_energy
-        tracker.update(
-            loss=loss.item(),
-            recon=loss_recon.item(),
-            post_recon=loss_post_recon.item(),
-            duration=loss_duration.item(),
-            pitch=loss_pitch.item(),
-            energy=loss_energy.item()
-        )
-        return loss
+                x, x_post, (dur_pred, pitch_pred, energy_pred) = model_g(
+                    src_mel, src_length, tgt_length, src_pitch, tgt_pitch, src_energy, tgt_energy, path
+                )
+                loss_recon = F.l1_loss(x, tgt_mel)
+                loss_post_recon = F.l1_loss(x_post, tgt_mel)
+                loss_duration = F.mse_loss(dur_pred, tgt_duration.to(x.dtype))
+                loss_pitch = F.mse_loss(pitch_pred, tgt_pitch.to(x.dtype))
+                loss_energy = F.mse_loss(energy_pred, tgt_energy.to(x.dtype))
+                loss_g = loss_recon + loss_post_recon + loss_duration + loss_pitch + loss_energy
+
+                tracker.update(
+                    loss_g=loss_g.item(),
+                    recon=loss_recon.item(),
+                    post_recon=loss_post_recon.item(),
+                    duration=loss_duration.item(),
+                    pitch=loss_pitch.item(),
+                    energy=loss_energy.item()
+                )
+        self.write_losses(epoch, writer, tracker, mode='valid')
 
     def prepare_data(self, config):
         data_dir = Path(config.data_dir)
@@ -150,24 +218,28 @@ class Trainer:
         valid = fns[train_size:]
         return train, valid
 
-    def load(self, config, model, optimizer):
+    def load(self, config, model_g, model_d, optimizer_g, optimizer_d):
         if config.resume_checkpoint:
             checkpoint = torch.load(f'{config.model_dir}/latest.ckpt')
             epochs = checkpoint['epoch']
             iteration = checkpoint['iteration']
-            model.load_state_dict(checkpoint['model'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
+            model_g.load_state_dict(checkpoint['model_g'])
+            model_d.load_state_dict(checkpoint['model_d'])
+            optimizer_g.load_state_dict(checkpoint['optimizer_g'])
+            optimizer_d.load_state_dict(checkpoint['optimizer_d'])
             print(f'Loaded {iteration}iter model and optimizer.')
             return epochs + 1
         else:
             return 0
 
-    def save(self, save_path, epoch, iteration, model, optimizer):
+    def save(self, save_path, epoch, iteration, model_g, model_d, optimizer_g, optimizer_d):
         torch.save({
             'epoch': epoch,
             'iteration': iteration,
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict()
+            'model_g': model_g.state_dict(),
+            'model_d': model_d.state_dict(),
+            'optimizer_g': optimizer_g.state_dict(),
+            'optimizer_d': optimizer_d.state_dict()
         }, save_path)
 
     def write_losses(self, epoch, writer, tracker, mode='train'):

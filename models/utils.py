@@ -1,5 +1,14 @@
+import random
 import torch
 import torch.nn.functional as F
+
+
+def rand_slice(length, segment_length):
+    min_length = length.min().item()
+    b = random.randint(0, min_length - segment_length)
+    e = b + segment_length
+    return b, e
+
 
 
 def sequence_mask(length, max_length=None):
