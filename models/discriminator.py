@@ -2,11 +2,11 @@ import torch.nn as nn
 
 
 class ConvLayer(nn.Module):
-    def __init__(self, channels, kernel_size):
+    def __init__(self, channels, kernel_size, stride):
         super(ConvLayer, self).__init__()
 
-        self.conv = nn.Conv1d(channels, channels, kernel_size, padding=kernel_size // 2)
-        self.norm = nn.BatchNorm1d(channels)
+        self.conv = nn.Conv1d(channels, channels, kernel_size, stride=stride, padding=kernel_size // 2)
+        self.norm = nn.InstanceNorm1d(channels)
         self.act = nn.SiLU()
 
     def forward(self, x):
@@ -25,17 +25,20 @@ class Discriminator(nn.Module):
         self.layers = nn.ModuleList([
             ConvLayer(
                 channels,
-                kernel_size
-            ) for _ in range(n_layers)
+                kernel_size,
+                stride=2 if i % 2 == 0 else 1
+            ) for i in range(n_layers)
         ])
         self.pool = nn.AdaptiveAvgPool1d(1)
         self.out_conv = nn.Conv1d(channels, 1, 1)
 
     def forward(self, x):
+        maps = list()
         x = self.in_conv(x)
         x = self.act(x)
         for layer in self.layers:
-            x = x + layer(x)
+            x = layer(x)
+            maps.append(x)
         x = self.pool(x)
         x = self.out_conv(x)
-        return x
+        return x, maps

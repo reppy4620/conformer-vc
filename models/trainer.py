@@ -15,7 +15,7 @@ from .model import ConformerVC
 from .discriminator import Discriminator
 from .lr_scheduler import NoamLR
 from .utils import rand_slice
-from .loss import d_loss, g_loss
+from .loss import d_loss, g_loss, feature_map_loss
 from utils import seed_everything, Tracker
 
 
@@ -128,8 +128,8 @@ class Trainer:
 
             # D
             b, e = rand_slice(tgt_length, segment_length=config.model.segment_length)
-            pred_fake = model_d(x_post[:, :, b:e].detach())
-            pred_real = model_d(tgt_mel[:, :, b:e])
+            pred_real, _ = model_d(tgt_mel[:, :, b:e])
+            pred_fake, _ = model_d(x_post[:, :, b:e].detach())
             loss_d = d_loss(pred_real, pred_fake)
             optimizer_d.zero_grad()
             accelerator.backward(loss_d)
@@ -138,14 +138,16 @@ class Trainer:
             scheduler_d.step()
 
             # G
-            pred_fake = model_d(x_post[:, :, b:e])
+            pred_real, fm_real = model_d(tgt_mel[:, :, b:e])
+            pred_fake, fm_fake = model_d(x_post[:, :, b:e])
             loss_gan = g_loss(pred_fake)
+            loss_fm = feature_map_loss(fm_real, fm_fake)
             loss_recon = F.l1_loss(x, tgt_mel)
             loss_post_recon = F.l1_loss(x_post, tgt_mel)
             loss_duration = F.mse_loss(dur_pred, tgt_duration.to(x.dtype))
             loss_pitch = F.mse_loss(pitch_pred, tgt_pitch.to(x.dtype))
             loss_energy = F.mse_loss(energy_pred, tgt_energy.to(x.dtype))
-            loss_g = loss_gan + loss_recon + loss_post_recon + loss_duration + loss_pitch + loss_energy
+            loss_g = loss_gan + loss_fm + loss_recon + loss_post_recon + loss_duration + loss_pitch + loss_energy
             optimizer_g.zero_grad()
             accelerator.backward(loss_g)
             accelerator.clip_grad_norm_(model_g.parameters(), 5)
