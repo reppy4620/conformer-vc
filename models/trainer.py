@@ -73,17 +73,16 @@ class Trainer:
         scheduler_d = NoamLR(optimizer_d, channels=config.model.discriminator.channels, last_epoch=epochs * len(train_loader) - 1)
 
         for epoch in range(epochs, config.train.num_epochs):
-            with torch.autograd.set_detect_anomaly(True):
-                self.train_step(
-                    config,
-                    epoch,
-                    [model_g, model_d],
-                    [optimizer_g, optimizer_d],
-                    [scheduler_g, scheduler_d],
-                    train_loader,
-                    writer,
-                    accelerator
-                )
+            self.train_step(
+                config,
+                epoch,
+                [model_g, model_d],
+                [optimizer_g, optimizer_d],
+                [scheduler_g, scheduler_d],
+                train_loader,
+                writer,
+                accelerator
+            )
             accelerator.wait_for_everyone()
             if accelerator.is_main_process:
                 self.valid_step(epoch, model_g, valid_loader, writer)
