@@ -23,11 +23,13 @@ class Discriminator(nn.Module):
         self.in_conv = nn.Conv1d(in_channels, channels, 1)
         self.act = nn.SiLU()
         self.layers = nn.ModuleList([
-            ConvLayer(
-                channels,
-                kernel_size,
-                stride=2 if i % 2 == 0 else 1
-            ) for i in range(n_layers)
+            nn.utils.spectral_norm(
+                ConvLayer(
+                    channels,
+                    kernel_size,
+                    stride=2
+                )
+            ) for _ in range(n_layers)
         ])
         self.pool = nn.AdaptiveAvgPool1d(1)
         self.out_conv = nn.Conv1d(channels, 1, 1)
