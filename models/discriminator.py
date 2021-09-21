@@ -5,7 +5,9 @@ class ConvLayer(nn.Module):
     def __init__(self, channels, kernel_size, stride):
         super(ConvLayer, self).__init__()
 
-        self.conv = nn.Conv1d(channels, channels, kernel_size, stride=stride, padding=kernel_size // 2)
+        self.conv = nn.utils.spectral_norm(
+            nn.Conv1d(channels, channels, kernel_size, stride=stride, padding=kernel_size // 2)
+        )
         self.norm = nn.InstanceNorm1d(channels)
         self.act = nn.SiLU()
 
@@ -23,12 +25,10 @@ class Discriminator(nn.Module):
         self.in_conv = nn.Conv1d(in_channels, channels, 1)
         self.act = nn.SiLU()
         self.layers = nn.ModuleList([
-            nn.utils.spectral_norm(
-                ConvLayer(
-                    channels,
-                    kernel_size,
-                    stride=2
-                )
+            ConvLayer(
+                channels,
+                kernel_size,
+                stride=2
             ) for _ in range(n_layers)
         ])
         self.pool = nn.AdaptiveAvgPool1d(1)
