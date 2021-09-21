@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
@@ -60,8 +59,8 @@ class Trainer:
             collate_fn=collate_fn
         )
 
-        model_g = nn.DataParallel(ConformerVC(config.model))
-        model_d = nn.DataParallel(Discriminator(in_channels=config.model.n_mel, **config.model.discriminator))
+        model_g = ConformerVC(config.model)
+        model_d = Discriminator(in_channels=config.model.n_mel, **config.model.discriminator)
         optimizer_g = optim.AdamW(model_g.parameters(), eps=1e-9, **config.optimizer)
         optimizer_d = optim.AdamW(model_d.parameters(), eps=1e-9, **config.optimizer)
 
