@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from .common import RelPositionalEncoding, PostNet
+from .common import RelPositionalEncoding
 from .conformer import Conformer
 from .predictors import VarianceConverter
 from .utils import sequence_mask
@@ -11,7 +11,7 @@ class ConformerVC(nn.Module):
         super(ConformerVC, self).__init__()
 
         self.in_conv = nn.Conv1d(80, params.encoder.channels, 1)
-        self.relive_pos_emb = RelPositionalEncoding(
+        self.relative_pos_emb = RelPositionalEncoding(
             params.encoder.channels,
             params.encoder.dropout
         )
@@ -21,8 +21,28 @@ class ConformerVC(nn.Module):
             dropout=params.encoder.dropout
         )
         self.decoder = Conformer(**params.decoder)
+
         self.out_conv = nn.Conv1d(params.decoder.channels, 80, 1)
-        self.post_net = PostNet(params.decoder.channels)
+
+        self.post_net = nn.Sequential(
+            nn.Conv1d(80, params.decoder.channels, 5, padding=2),
+            nn.BatchNorm1d(params.decoder.channels),
+            nn.Tanh(),
+            nn.Dropout(0.5),
+            nn.Conv1d(params.decoder.channels, params.decoder.channels, 5, padding=2),
+            nn.BatchNorm1d(params.decoder.channels),
+            nn.Tanh(),
+            nn.Dropout(0.5),
+            nn.Conv1d(params.decoder.channels, params.decoder.channels, 5, padding=2),
+            nn.BatchNorm1d(params.decoder.channels),
+            nn.Tanh(),
+            nn.Dropout(0.5),
+            nn.Conv1d(params.decoder.channels, params.decoder.channels, 5, padding=2),
+            nn.BatchNorm1d(params.decoder.channels),
+            nn.Tanh(),
+            nn.Dropout(0.5),
+            nn.Conv1d(params.decoder.channels, 80, 5, padding=2)
+        )
 
     def forward(
         self,
@@ -39,7 +59,7 @@ class ConformerVC(nn.Module):
         y_mask = sequence_mask(y_length).unsqueeze(1).to(x.dtype)
 
         x = self.in_conv(x) * x_mask
-        x, pos_emb = self.relive_pos_emb(x)
+        x, pos_emb = self.relative_pos_emb(x)
         x = self.encoder(x, pos_emb, x_mask)
 
         x, (dur_pred, pitch_pred, energy_pred) = self.variance_adopter(
@@ -52,12 +72,13 @@ class ConformerVC(nn.Module):
             tgt_energy,
             path,
         )
-        x, pos_emb = self.relive_pos_emb(x)
+        x, pos_emb = self.relative_pos_emb(x)
         x = self.decoder(x, pos_emb, y_mask)
         x = self.out_conv(x)
         x *= y_mask
 
-        x_post = x + self.post_net(x, y_mask)
+        x_post = x + self.post_net(x)
+        x_post *= y_mask
 
         return x, x_post, (dur_pred, pitch_pred, energy_pred)
 
@@ -65,7 +86,7 @@ class ConformerVC(nn.Module):
         x_mask = sequence_mask(x_length).unsqueeze(1).to(x.dtype)
 
         x = self.in_conv(x) * x_mask
-        x, pos_emb = self.relive_pos_emb(x)
+        x, pos_emb = self.relative_pos_emb(x)
         x = self.encoder(x, pos_emb, x_mask)
 
         x, y_mask = self.variance_adopter.infer(
@@ -74,10 +95,11 @@ class ConformerVC(nn.Module):
             pitch,
             energy,
         )
-        x, pos_emb = self.relive_pos_emb(x)
+        x, pos_emb = self.relative_pos_emb(x)
         x = self.decoder(x, pos_emb, y_mask)
         x = self.out_conv(x)
+        x *= y_mask
 
-        x = x + self.post_net(x, y_mask)
+        x = x + self.post_net(x)
         x *= y_mask
         return x
