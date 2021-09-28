@@ -77,7 +77,6 @@ class ConformerVC(nn.Module):
         x, pos_emb = self.relive_pos_emb(x)
         x = self.decoder(x, pos_emb, y_mask)
         x = self.out_conv(x)
-        x *= y_mask
 
         x = x + self.post_net(x, y_mask)
         x *= y_mask
