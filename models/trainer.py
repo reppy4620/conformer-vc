@@ -127,10 +127,10 @@ class Trainer:
         data_dir = Path(config.data.data_dir)
         assert data_dir.exists()
 
-        fns = list(sorted(list(data_dir.glob('*.pt'))))
-        train_size = int(len(fns) * config.train.train_ratio)
-        train_data = fns[:train_size]
-        valid_data = fns[train_size:]
+        fns = list(sorted(data_dir.glob('*.pt')))
+        valid_size = config.train.valid_size
+        valid_data = fns[:valid_size]
+        train_data = fns[valid_size:]
 
         train_dataset = VCDataset(train_data)
         valid_dataset = VCDataset(valid_data)
