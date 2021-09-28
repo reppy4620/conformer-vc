@@ -86,7 +86,7 @@ class PreProcessor:
 
         assert len(src_mfccs) == len(tgt_mfccs), 'Dataset must be parallel data.'
         print('Calculate DTW')
-        paths = [dtw(src_mfccs[i], tgt_mfccs[i], interp=False) for i in tqdm(range(len(src_mfccs)))]
+        paths = [dtw(src_mfccs[i], tgt_mfccs[i]) for i in tqdm(range(len(src_mfccs)))]
 
         print('Save file')
         for i in tqdm(range(len(src_mels))):

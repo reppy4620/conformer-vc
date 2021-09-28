@@ -1,5 +1,5 @@
-src_dir: ../../dataset/vc/src_dir
-tgt_dir: ../../dataset/vc/tgt_dir
-orig_sr: 48000
+src_dir: ../../dataset/vc/task/wav24k/onda
+tgt_dir: ../../dataset/vc/task/wav24k/ando
+orig_sr: 24000
 new_sr: 24000
-output_dir: ./dataset/feats
+output_dir: ./dataset/feats_task2
