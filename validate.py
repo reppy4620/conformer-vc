@@ -10,7 +10,6 @@ from omegaconf import OmegaConf
 
 from models import ConformerVC
 from hifi_gan import load_hifi_gan
-from utils import latest_checkpoint
 
 SR = 24000
 
