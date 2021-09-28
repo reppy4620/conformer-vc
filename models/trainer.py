@@ -56,7 +56,7 @@ class Trainer:
                 self.valid_step(epoch, model, valid_loader, writer)
                 if (epoch + 1) % config.train.save_interval == 0:
                     self.save(
-                        output_dir / f'cfm-vc_{epoch+1}.ckpt',
+                        output_dir / f'latest.ckpt',
                         epoch,
                         (epoch+1)*len(train_loader),
                         accelerator.unwrap_model(model),
