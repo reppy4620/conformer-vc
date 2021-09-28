@@ -29,7 +29,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    ckpt_path = latest_checkpoint(args.model_dir)
+    ckpt_path = f'{args.model_dir}/latest.ckpt'
     checkpoint = torch.load(ckpt_path, map_location=device)
     model = ConformerVC(config.model)
     model.load_state_dict(checkpoint['model'])
