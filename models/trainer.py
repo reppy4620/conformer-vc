@@ -132,8 +132,11 @@ class Trainer:
         valid_data = fns[:valid_size]
         train_data = fns[valid_size:]
 
-        train_dataset = VCDataset(train_data)
-        valid_dataset = VCDataset(valid_data)
+        src_stats = torch.load(config.data.src_stats)
+        tgt_stats = torch.load(config.data.tgt_stats)
+
+        train_dataset = VCDataset(train_data, src_stats, tgt_stats)
+        valid_dataset = VCDataset(valid_data, src_stats, tgt_stats)
 
         train_loader = DataLoader(
             train_dataset,

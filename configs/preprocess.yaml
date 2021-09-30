@@ -2,4 +2,4 @@ src_dir: ../../dataset/vc/task/wav24k/onda
 tgt_dir: ../../dataset/vc/task/wav24k/ando
 orig_sr: 24000
 new_sr: 24000
-output_dir: ./dataset/feats_task2
+output_dir: ./dataset/feats_task

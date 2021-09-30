@@ -5,14 +5,40 @@ from torch.utils.data import Dataset
 
 
 class VCDataset(Dataset):
-    def __init__(self, fns):
+    def __init__(self, fns, src_stats, tgt_stats):
         self.fns = fns
+
+        self.src_stats = src_stats
+        self.tgt_stats = tgt_stats
 
     def __len__(self):
         return len(self.fns)
 
     def __getitem__(self, idx):
-        return torch.load(self.fns[idx])[2:]
+        (
+            src_mel,
+            tgt_mel,
+            src_length,
+            tgt_length,
+            src_pitch,
+            tgt_pitch,
+            src_energy,
+            tgt_energy,
+            path
+        ) = torch.load(self.fns[idx])[2:]
+        src_mel = (src_mel - self.src_stats['mean']) / self.src_stats['std']
+        tgt_mel = (tgt_mel - self.tgt_stats['mean']) / self.tgt_stats['std']
+        return (
+            src_mel,
+            tgt_mel,
+            src_length,
+            tgt_length,
+            src_pitch,
+            tgt_pitch,
+            src_energy,
+            tgt_energy,
+            path
+        )
 
 
 def collate_fn(batch):
