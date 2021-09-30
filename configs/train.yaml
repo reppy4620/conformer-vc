@@ -12,6 +12,9 @@ train:
 data:
   data_dir: ./DATA
 
+  src_stats: ../../dataset/vc/stats/src_stats.pt
+  tgt_stats: ../../dataset/vc/stats/tgt_stats.pt
+
 model:
   encoder:
     channels: 384
