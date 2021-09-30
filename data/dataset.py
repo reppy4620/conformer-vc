@@ -26,8 +26,8 @@ class VCDataset(Dataset):
             tgt_energy,
             path
         ) = torch.load(self.fns[idx])[2:]
-        src_mel = (src_mel - self.src_stats['mean']) / self.src_stats['std']
-        tgt_mel = (tgt_mel - self.tgt_stats['mean']) / self.tgt_stats['std']
+        src_mel = (src_mel - float(self.src_stats['mean'])) / float(self.src_stats['std'])
+        tgt_mel = (tgt_mel - float(self.tgt_stats['mean'])) / float(self.tgt_stats['std'])
         return (
             src_mel,
             tgt_mel,
