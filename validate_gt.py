@@ -27,6 +27,9 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    src_stats = torch.load('./dataset/stats/src_stats.pt')
+    tgt_stats = torch.load('./dataset/stats/tgt_stats.pt')
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     checkpoint = torch.load(f'{args.model_dir}/latest.ckpt', map_location=device)
     model = ConformerVC(config.model)
@@ -46,6 +49,7 @@ def main():
         path
     ):
         src_mel = src_mel.transpose(-1, -2).unsqueeze(0).to(device)
+        src_mel = (src_mel - float(src_stats['mean'])) / float(src_stats['std'])
         src_length = torch.LongTensor([src_length]).to(device)
         tgt_length = torch.LongTensor([tgt_length]).to(device)
         pitch = pitch.transpose(-1, -2).unsqueeze(0).to(device)
@@ -64,6 +68,7 @@ def main():
                 tgt_energy,
                 path
             )
+            mel = mel * float(tgt_stats['std']) + float(tgt_stats['mean'])
             wav = hifi_gan(mel)
             mel, wav = mel.cpu(), wav.squeeze(1).cpu()
         return mel, wav

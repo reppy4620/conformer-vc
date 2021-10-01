@@ -27,6 +27,9 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    src_stats = torch.load('./dataset/stats/src_stats.pt')
+    tgt_stats = torch.load('./dataset/stats/tgt_stats.pt')
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ckpt_path = f'{args.model_dir}/latest.ckpt'
     checkpoint = torch.load(ckpt_path, map_location=device)
@@ -38,14 +41,17 @@ def main():
 
     def infer(mel, length, pitch, energy):
         mel = mel.transpose(-1, -2).unsqueeze(0).to(device)
+        mel = (mel - float(src_stats['mean'])) / float(src_stats['std'])
         pitch = pitch.transpose(-1, -2).unsqueeze(0).to(device)
         energy = energy.transpose(-1, -2).unsqueeze(0).to(device)
         length = torch.LongTensor([length]).to(device)
         with torch.no_grad():
-            mel = model.infer(mel, length, pitch, energy)
+            mel, path = model.infer(mel, length, pitch, energy)
+            mel = mel * float(tgt_stats['std']) + float(tgt_stats['mean'])
             wav = hifi_gan(mel)
             mel, wav = mel.cpu(), wav.squeeze(1).cpu()
-        return mel, wav
+            path = path.squeeze().cpu()
+        return mel, wav, path
 
     def save_wav(wav, path):
         torchaudio.save(
@@ -59,18 +65,18 @@ def main():
     def save_mel_three_attn(src, tgt, gen, attn, path):
         plt.figure(figsize=(20, 7))
         plt.subplot(321)
-        plt.gca().title.set_text('MSK')
+        plt.gca().title.set_text('onda')
         plt.imshow(src, aspect='auto', origin='lower')
         plt.subplot(323)
-        plt.gca().title.set_text('JSUT')
+        plt.gca().title.set_text('ando')
         plt.imshow(tgt, aspect='auto', origin='lower')
         plt.subplot(325)
-        plt.gca().title.set_text('GEN')
+        plt.gca().title.set_text('gen')
         plt.imshow(gen, aspect='auto', origin='lower')
         plt.subplot(122)
         plt.gca().title.set_text('alignment')
-        plt.xlabel('MSK')
-        plt.ylabel('JSUT')
+        plt.xlabel('onda')
+        plt.ylabel('ando')
         plt.imshow(attn.T, aspect='auto', origin='lower')
         plt.savefig(path)
         plt.close()
@@ -89,9 +95,9 @@ def main():
             tgt_pitch,
             src_energy,
             tgt_energy,
-            path
+            _
         ) = torch.load(fn)
-        mel_gen, wav_gen = infer(src_mel, src_length, src_pitch, src_energy)
+        mel_gen, wav_gen, path = infer(src_mel, src_length, src_pitch, src_energy)
 
         d = output_dir / os.path.splitext(fn.name)[0]
         d.mkdir(exist_ok=True)
