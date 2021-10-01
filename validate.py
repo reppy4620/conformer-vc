@@ -42,11 +42,10 @@ def main():
         energy = energy.transpose(-1, -2).unsqueeze(0).to(device)
         length = torch.LongTensor([length]).to(device)
         with torch.no_grad():
-            mel, path = model.infer(mel, length, pitch, energy)
+            mel = model.infer(mel, length, pitch, energy)
             wav = hifi_gan(mel)
             mel, wav = mel.cpu(), wav.squeeze(1).cpu()
-            path = path.squeeze().cpu()
-        return mel, wav, path
+        return mel, wav
 
     def save_wav(wav, path):
         torchaudio.save(
@@ -57,22 +56,14 @@ def main():
             bits_per_sample=16
         )
 
-    def save_mel_three_attn(src, tgt, gen, attn, path):
-        plt.figure(figsize=(20, 7))
-        plt.subplot(321)
-        plt.gca().title.set_text('MSK')
-        plt.imshow(src, aspect='auto', origin='lower')
-        plt.subplot(323)
-        plt.gca().title.set_text('JSUT')
+    def save_mel_three_attn(tgt, gen, path):
+        plt.figure(figsize=(10, 7))
+        plt.subplot(211)
+        plt.gca().title.set_text('GT')
         plt.imshow(tgt, aspect='auto', origin='lower')
-        plt.subplot(325)
+        plt.subplot(212)
         plt.gca().title.set_text('GEN')
         plt.imshow(gen, aspect='auto', origin='lower')
-        plt.subplot(122)
-        plt.gca().title.set_text('alignment')
-        plt.xlabel('MSK')
-        plt.ylabel('JSUT')
-        plt.imshow(attn.T, aspect='auto', origin='lower')
         plt.savefig(path)
         plt.close()
 
@@ -92,7 +83,7 @@ def main():
             tgt_energy,
             _
         ) = torch.load(fn)
-        mel_gen, wav_gen, path = infer(src_mel, src_length, src_pitch, src_energy)
+        mel_gen, wav_gen, _ = infer(src_mel, src_length, src_pitch, src_energy)
 
         d = output_dir / os.path.splitext(fn.name)[0]
         d.mkdir(exist_ok=True)
@@ -101,13 +92,9 @@ def main():
         save_wav(tgt_wav, d / 'tgt.wav')
         save_wav(wav_gen, d / 'gen.wav')
 
-        src_mel_stretch = torch.einsum('t c, t d -> d c', src_mel, path)
-
         save_mel_three_attn(
-            src_mel_stretch.squeeze().transpose(0, 1),
             tgt_mel.squeeze().transpose(0, 1),
             mel_gen.squeeze(),
-            path,
             d / 'comp.png'
         )
 
