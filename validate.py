@@ -42,10 +42,11 @@ def main():
         energy = energy.transpose(-1, -2).unsqueeze(0).to(device)
         length = torch.LongTensor([length]).to(device)
         with torch.no_grad():
-            mel = model.infer(mel, length, pitch, energy)
+            mel, path = model.infer(mel, length, pitch, energy)
             wav = hifi_gan(mel)
             mel, wav = mel.cpu(), wav.squeeze(1).cpu()
-        return mel, wav
+            path = path.squeeze().cpu()
+        return mel, wav, path
 
     def save_wav(wav, path):
         torchaudio.save(
@@ -89,9 +90,9 @@ def main():
             tgt_pitch,
             src_energy,
             tgt_energy,
-            path
+            _
         ) = torch.load(fn)
-        mel_gen, wav_gen = infer(src_mel, src_length, src_pitch, src_energy)
+        mel_gen, wav_gen, path = infer(src_mel, src_length, src_pitch, src_energy)
 
         d = output_dir / os.path.splitext(fn.name)[0]
         d.mkdir(exist_ok=True)
