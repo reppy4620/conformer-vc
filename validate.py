@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 
 from models import ConformerVC
 from hifi_gan import load_hifi_gan
+from transform import TacotronSTFT
 
 SR = 24000
 
@@ -36,6 +37,8 @@ def main():
     hifi_gan = load_hifi_gan(args.hifi_gan)
     model, hifi_gan = model.eval().to(device), hifi_gan.eval().to(device)
 
+    to_mel = TacotronSTFT()
+
     def infer(mel, length, pitch, energy):
         mel = mel.transpose(-1, -2).unsqueeze(0).to(device)
         pitch = pitch.transpose(-1, -2).unsqueeze(0).to(device)
@@ -56,14 +59,17 @@ def main():
             bits_per_sample=16
         )
 
-    def save_mel_three_attn(tgt, gen, path):
+    def save_mel_three_attn(tgt, gen, gen2, path):
         plt.figure(figsize=(10, 7))
-        plt.subplot(211)
+        plt.subplot(311)
         plt.gca().title.set_text('GT')
         plt.imshow(tgt, aspect='auto', origin='lower')
-        plt.subplot(212)
+        plt.subplot(312)
         plt.gca().title.set_text('GEN')
         plt.imshow(gen, aspect='auto', origin='lower')
+        plt.subplot(313)
+        plt.gca().title.set_text('GEN(vocoder)')
+        plt.imshow(gen2, aspect='auto', origin='lower')
         plt.savefig(path)
         plt.close()
 
@@ -83,7 +89,8 @@ def main():
             tgt_energy,
             _
         ) = torch.load(fn)
-        mel_gen, wav_gen, _ = infer(src_mel, src_length, src_pitch, src_energy)
+        mel_gen, wav_gen = infer(src_mel, src_length, src_pitch, src_energy)
+        mel_gen2, _ = to_mel(wav_gen)
 
         d = output_dir / os.path.splitext(fn.name)[0]
         d.mkdir(exist_ok=True)
@@ -95,6 +102,7 @@ def main():
         save_mel_three_attn(
             tgt_mel.squeeze().transpose(0, 1),
             mel_gen.squeeze(),
+            mel_gen2.squeeze(),
             d / 'comp.png'
         )
 

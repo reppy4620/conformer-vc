@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 
 from models import ConformerVC
 from hifi_gan import load_hifi_gan
+from transform import TacotronSTFT
 
 SR = 24000
 
@@ -34,6 +35,8 @@ def main():
     print(f'Loaded {checkpoint["iteration"]} Iteration Model')
     hifi_gan = load_hifi_gan(args.hifi_gan)
     model, hifi_gan = model.eval().to(device), hifi_gan.eval().to(device)
+
+    to_mel = TacotronSTFT()
 
     def infer(
         src_mel,
@@ -114,6 +117,7 @@ def main():
             tgt_energy,
             path
         )
+        mel_gen2, _ = to_mel(wav_gen)
 
         d = output_dir / os.path.splitext(fn.name)[0]
         d.mkdir(exist_ok=True)
@@ -126,6 +130,7 @@ def main():
         save_mel_three_attn(
             tgt_mel.squeeze().transpose(0, 1),
             mel_gen.squeeze(),
+            # mel_gen2.squeeze(),
             d / 'comp.png'
         )
 
