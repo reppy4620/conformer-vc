@@ -3,7 +3,7 @@ model_dir: ../../models/cfm_vc_f
 resume_checkpoint: false
 
 train:
-  fp16: true
+  fp16: false
   batch_size: 32
   num_epochs: 5000
   save_interval: 100
