@@ -1,3 +1,4 @@
+import torch.fft
 import torch.nn as nn
 
 from .attention import RelativeSelfAttentionLayer
@@ -23,6 +24,7 @@ class ConformerLayer(nn.Module):
 
     def forward(self, x, pos_emb, x_mask):
         x += 0.5 * self.ff1(x, x_mask)
+        x += torch.real(torch.fft.fft2(x))
         x += self.mha(x, pos_emb, x_mask)
         x += self.conv_module(x, x_mask)
         x += 0.5 * self.ff2(x, x_mask)
