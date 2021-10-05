@@ -1,6 +1,6 @@
 seed: 42
 model_dir: ../../models/cfm_vc_f
-resume_checkpoint: false
+resume_checkpoint: true
 
 train:
   fp16: false
