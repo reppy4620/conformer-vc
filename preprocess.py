@@ -24,8 +24,6 @@ class PreProcessor:
         self.src_dir = Path(config.src_dir)
         self.tgt_dir = Path(config.tgt_dir)
 
-        self.label_dir = Path(config.label_dir)
-
         self.output_dir = Path(config.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -35,26 +33,11 @@ class PreProcessor:
         ORIG_SR = config.orig_sr
         NEW_SR = config.new_sr
 
-    def load_jmvd(self, wav_path):
+    @staticmethod
+    def load_wav(wav_path):
         wav, sr = sf.read(wav_path)
         wav = librosa.resample(wav, ORIG_SR, NEW_SR)
         wav_trimmed = trim_long_silences(wav)
-        return wav_trimmed
-
-    @staticmethod
-    def get_time(path, sr=24000):
-        with open(path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        b, e = lines[1], lines[-2]
-        begin_time = int(float(b.split(' ')[0]) * 1e-7 * sr)
-        end_time = int(float(e.split(' ')[1]) * 1e-7 * sr)
-        return begin_time, end_time
-
-    def load_jsut(self, wav_path, label_path):
-        wav, sr = sf.read(wav_path)
-        wav = librosa.resample(wav, ORIG_SR, NEW_SR)
-        b, e = self.get_time(label_path, sr=NEW_SR)
-        wav_trimmed = wav[b:e]
         return wav_trimmed
 
     @staticmethod
@@ -63,40 +46,14 @@ class PreProcessor:
         mfcc = pw.code_spectral_envelope(sp, NEW_SR, 24)
         return f0, sp, ap, mfcc
 
-    def process_jsut(self, dir_path, label_path):
-        wav_paths = list(sorted(dir_path.glob('*.wav')))[:550]
-        label_path = list(sorted(label_path.glob('*.lab')))[:550]
+    def dtw(self, x, y):
+        _, path = dtw(x, y)
+        attn = np.zeros((x.shape[0], y.shape[0]))
+        for x, y in path:
+            attn[x, y] = 1
+        return attn
 
-        wavs = list()
-        mels = list()
-        lengths = list()
-        pitches = list()
-        energies = list()
-        mfccs = list()
-
-        for i in tqdm(range(len(wav_paths))):
-            wav = self.load_jsut(wav_paths[i], label_path[i])
-            pitch, *_, mfcc = self.extract_feats(wav)
-            mel, energy = self.to_mel(torch.FloatTensor(wav)[None, :])
-
-            pitch = np.array(pitch).astype(np.float32)
-            energy = np.array(energy).astype(np.float32)
-
-            pitch[pitch != 0] = np.log(pitch[pitch != 0])
-            energy[energy != 0] = np.log(energy[energy != 0])
-
-            assert pitch.shape[0] == mel.size(-1)
-
-            wavs.append(wav)
-            mels.append(mel)
-            lengths.append(mel.size(-1))
-            pitches.append(pitch)
-            energies.append(energy)
-            mfccs.append(mfcc)
-
-        return wavs, mels, pitches, energies, mfccs, lengths
-
-    def process_jmvd(self, dir_path):
+    def process_speaker(self, dir_path):
         wav_paths = list(sorted(list(dir_path.glob('*.wav'))))
 
         wavs = list()
@@ -107,7 +64,7 @@ class PreProcessor:
         mfccs = list()
 
         for i in tqdm(range(len(wav_paths))):
-            wav = self.load_jmvd(wav_paths[i])
+            wav = self.load_wav(wav_paths[i])
             pitch, *_, mfcc = self.extract_feats(wav)
             mel, energy = self.to_mel(torch.FloatTensor(wav)[None, :])
 
@@ -130,13 +87,13 @@ class PreProcessor:
 
     def preprocess(self):
         print('Start Source')
-        src_wavs, src_mels, src_pitches, src_energies, src_mfccs, src_lengths = self.process_jsut(self.src_dir, self.label_dir)
+        src_wavs, src_mels, src_pitches, src_energies, src_mfccs, src_lengths = self.process_speaker(self.src_dir)
         print('Start Target')
-        tgt_wavs, tgt_mels, tgt_pitches, tgt_energies, tgt_mfccs, tgt_lengths = self.process_jmvd(self.tgt_dir)
+        tgt_wavs, tgt_mels, tgt_pitches, tgt_energies, tgt_mfccs, tgt_lengths = self.process_speaker(self.tgt_dir)
 
         assert len(src_mfccs) == len(tgt_mfccs), 'Dataset must be parallel data.'
         print('Calculate DTW')
-        paths = [dtw(src_mfccs[i], tgt_mfccs[i]) for i in tqdm(range(len(src_mfccs)))]
+        paths = [self.dtw(src_mfccs[i], tgt_mfccs[i]) for i in tqdm(range(len(src_mfccs)))]
 
         print('Save file')
         for i in tqdm(range(len(src_mels))):
