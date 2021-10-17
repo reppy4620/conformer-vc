@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 from resemblyzer import trim_long_silences
 
 from transform import TacotronSTFT
-from dtw import dtw
+from fastdtw import dtw
 
 ORIG_SR = None
 NEW_SR = None
@@ -19,7 +19,8 @@ NEW_SR = None
 
 class PreProcessor:
 
-    def __init__(self, config):
+    def __init__(self, config_path):
+        config = OmegaConf.load(config_path)
         self.src_dir = Path(config.src_dir)
         self.tgt_dir = Path(config.tgt_dir)
 
@@ -44,6 +45,13 @@ class PreProcessor:
         f0, sp, ap = pw.wav2world(wav, NEW_SR, 1024, 256 / NEW_SR * 1000)
         mfcc = pw.code_spectral_envelope(sp, NEW_SR, 24)
         return f0, sp, ap, mfcc
+
+    def dtw(self, x, y):
+        _, path = dtw(x, y)
+        attn = np.zeros((x.shape[0], y.shape[0]))
+        for x, y in path:
+            attn[x, y] = 1
+        return attn
 
     def process_speaker(self, dir_path):
         wav_paths = list(sorted(list(dir_path.glob('*.wav'))))
@@ -85,7 +93,7 @@ class PreProcessor:
 
         assert len(src_mfccs) == len(tgt_mfccs), 'Dataset must be parallel data.'
         print('Calculate DTW')
-        paths = [dtw(src_mfccs[i], tgt_mfccs[i], interp=False) for i in tqdm(range(len(src_mfccs)))]
+        paths = [self.dtw(src_mfccs[i], tgt_mfccs[i]) for i in tqdm(range(len(src_mfccs)))]
 
         print('Save file')
         for i in tqdm(range(len(src_mels))):
@@ -108,5 +116,4 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('-c', '--config', type=str, default='configs/preprocess.yaml')
     args = parser.parse_args()
-    config = OmegaConf.load(args.config)
-    PreProcessor(config).preprocess()
+    PreProcessor(args.config).preprocess()
