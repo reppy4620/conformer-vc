@@ -1,5 +1,6 @@
 src_dir: ../../dataset/vc/jmvd/basic5000
 tgt_dir: ../../dataset/jsut/wav
+label_dir: ../../dataset/jsut/labels
 orig_sr: 48000
 new_sr: 24000
 output_dir: ./dataset/msk_jsut
