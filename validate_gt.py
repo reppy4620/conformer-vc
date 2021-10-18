@@ -77,22 +77,14 @@ def main():
             bits_per_sample=16
         )
 
-    def save_mel_three_attn(src, tgt, gen, attn, path):
-        plt.figure(figsize=(20, 7))
-        plt.subplot(321)
-        plt.gca().title.set_text('MSK')
-        plt.imshow(src, aspect='auto', origin='lower')
-        plt.subplot(323)
+    def save_mel(tgt, gen, path):
+        plt.figure(figsize=(12, 7))
+        plt.subplot(211)
         plt.gca().title.set_text('JSUT')
         plt.imshow(tgt, aspect='auto', origin='lower')
-        plt.subplot(325)
+        plt.subplot(212)
         plt.gca().title.set_text('GEN')
         plt.imshow(gen, aspect='auto', origin='lower')
-        plt.subplot(122)
-        plt.gca().title.set_text('alignment')
-        plt.xlabel('MSK')
-        plt.ylabel('JSUT')
-        plt.imshow(attn.T, aspect='auto', origin='lower')
         plt.savefig(path)
         plt.close()
 
@@ -130,13 +122,9 @@ def main():
         save_wav(tgt_wav, d / 'tgt.wav')
         save_wav(wav_gen, d / 'gen.wav')
 
-        src_mel_stretch = torch.einsum('t c, t d -> d c', src_mel, path)
-
-        save_mel_three_attn(
-            src_mel_stretch.squeeze().transpose(0, 1),
+        save_mel(
             tgt_mel.squeeze().transpose(0, 1),
             mel_gen.squeeze(),
-            path,
             d / 'comp.png'
         )
 
