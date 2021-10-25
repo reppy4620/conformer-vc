@@ -11,7 +11,6 @@ from omegaconf import OmegaConf
 from resemblyzer import trim_long_silences
 
 from transform import TacotronSTFT
-# from dtw import dtw
 from fastdtw import dtw
 
 ORIG_SR = None

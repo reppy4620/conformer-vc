@@ -1,66 +1,56 @@
-# Conformer-VC
+# 概要
 
-Conformer-VC is inspired by [Non-autoregressive sequence-to-sequence voice conversion](https://arxiv.org/abs/2104.06793) that is parallel voice conversion methods powered by conformer.
+前処理、学習、評価データに対する推論に関するスクリプトが入っています。
 
-The differences between original paper are
-
-- NOT using reduction-factor.
-- Mel-spectrograms are not normalized by speaker statistics.
-- Extract durations by DTW, not pretrained autoregressive model.
-- Use HiFi-GAN instead of ParallelWaveGAN
-
-# Requirements
+# 必要パッケージ
+DockerFileを用意できればよかったのですが、環境的に使えなかったためパッケージを列挙します。
 
 - pytorch
-- numpy
-- pyworld
-- accelerate
-- soundfile
-- librosa
-- cython
-- omegaconf
+- torchaudio
 - tqdm
-- resemblyzer
-- matplotlib
+- librosa
 - scipy
+- numpy
+- matplotlib
+- accelerate
+- cython
+- fastdtw
+- omegaconf
 
-If you get an error about the package, please install it.
+# 使用方法
 
-# Usage
+以下のスクリプト実行前にconfigs/preprocess.yamlおよび、configs/train.yamlを適切な値に変更してください。  
+確認していただきたいものとして、preprocess.yamlの「src_dir」、「tgt_dir」は実行環境によって異なることが想定できるので確認をお願いします。
 
-1. Preprocess
-
-If you wanna train your dataset, please rewrite configs/preprocess.yaml and preprocess.py properly.  
-Note that num of source files and num of tgt files must be same and file ids must be same.
-
-```bash
-$ cd dtw && python setup.py build_ext --inplace && cd ..
-$ python prerprocess.py
-```
-
-2. Training
-
-single gpu training
+「src_dir」、「tgt_dir」が正しければ以下のコマンドで学習まで実行します。
 
 ```bash
-$ ln -s ./dataaset/feats DATA
-$ python train.py
-```
-or multi gpus
-
-```bash
-$ ln -s ./dataaset/feats DATA
-$ accelerate config
-
-answer question of your machine.
-
-$ accelerate launch train.py
+$ sh run.sh
 ```
 
-3. Validation
+なお、段階ごとに実行したい場合は以下の順で実行します。
 
-```bash
-$ python validate.py --model_dir {MODEL_DIR} --hifi_gan {HIFI_GAN_DIR} --data_dir DATA
+## 1. 前処理
+```
+$ python preprocess.py -c configs/preprocess.yaml
+
+-c or --config(default: configs/preprocess.yaml): configファイルの指定
 ```
 
-if this script run correctly, outputs directory is generated and synthesized wav is in it.
+## 2. 学習
+
+```
+$ python train.yaml -c configs/train.yaml
+
+-c or --config(default: configs/train.yaml): configファイルの指定
+```
+
+## 3. (optional)評価データに対する推論
+
+```
+$ python validate.py --model_dir ./pretrained/vc \
+                     --hifi_gan ./pretrained/hifi_gan \
+                     --data_dir ./DATA \
+                     --output_dir ./outputs
+```
+
