@@ -89,7 +89,7 @@ class ConformerVC(nn.Module):
         x, pos_emb = self.relative_pos_emb(x)
         x = self.encoder(x, pos_emb, x_mask)
 
-        x, y_mask = self.variance_adopter.infer(
+        x, y_mask, (pitch, _) = self.variance_adopter.infer(
             x,
             x_mask,
             pitch,
@@ -102,4 +102,4 @@ class ConformerVC(nn.Module):
 
         x = x + self.post_net(x)
         x *= y_mask
-        return x
+        return x, pitch

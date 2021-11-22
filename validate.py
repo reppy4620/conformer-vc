@@ -45,10 +45,11 @@ def main():
         energy = energy.transpose(-1, -2).unsqueeze(0).to(device)
         length = torch.LongTensor([length]).to(device)
         with torch.no_grad():
-            mel = model.infer(mel, length, pitch, energy)
+            mel, pred_pitch = model.infer(mel, length, pitch, energy)
             wav = hifi_gan(mel)
             mel, wav = mel.cpu(), wav.squeeze(1).cpu()
-        return mel, wav
+            pred_pitch = pred_pitch.squeeze().cpu()
+        return mel, wav, pred_pitch
 
     def save_wav(wav, path):
         torchaudio.save(
@@ -73,6 +74,15 @@ def main():
         plt.savefig(path)
         plt.close()
 
+    def save_f0(tgt, pred, path):
+        plt.figure(figsize=(10, 7))
+        plt.plot(tgt, label='GT')
+        plt.plot(pred, label='Pred')
+        plt.legend()
+        plt.grid()
+        plt.savefig(path)
+        plt.close()
+
     fns = list(sorted(list(Path(args.data_dir).glob('*.pt'))))
 
     for fn in tqdm(fns, total=len(fns)):
@@ -89,7 +99,7 @@ def main():
             tgt_energy,
             _
         ) = torch.load(fn)
-        mel_gen, wav_gen = infer(src_mel, src_length, src_pitch, src_energy)
+        mel_gen, wav_gen, pred_pitch = infer(src_mel, src_length, src_pitch, src_energy)
         mel_gen2, _ = to_mel(wav_gen)
 
         d = output_dir / os.path.splitext(fn.name)[0]
@@ -105,6 +115,8 @@ def main():
             mel_gen2.squeeze(),
             d / 'comp.png'
         )
+
+        save_f0(tgt_pitch, pred_pitch, d / 'f0.png')
 
 
 if __name__ == '__main__':
